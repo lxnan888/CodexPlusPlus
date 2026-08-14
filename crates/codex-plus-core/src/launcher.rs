@@ -1471,6 +1471,13 @@ async fn handle_models_proxy_connection(
         upstream.content_type.clone()
     };
     let body = upstream.response.bytes().await?.to_vec();
+    // 上游 /v1/models 返回的 context_window 会覆盖本地 catalog 配置（#1594），
+    // 这里按 catalog 中配置的窗口值改写响应，让 Codex 桌面版优先看到本地配置。
+    let body = if is_success {
+        crate::protocol_proxy::apply_catalog_context_windows_to_models_body(body)
+    } else {
+        body
+    };
     write_http_response(stream, &status, &content_type, &body).await?;
     log_helper_response(
         if is_success {

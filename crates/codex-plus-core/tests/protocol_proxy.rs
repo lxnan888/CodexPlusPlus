@@ -2129,3 +2129,101 @@ fn spawn_chat_server() -> ChatServer {
     });
     ChatServer { base_url, handle }
 }
+
+// ---------- catalog 窗口改写 /v1/models 响应（#1594） ----------
+
+static CODEX_HOME_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+struct CodexHomeGuard {
+    previous: Option<std::ffi::OsString>,
+}
+
+impl CodexHomeGuard {
+    fn set(path: &std::path::Path) -> Self {
+        let previous = std::env::var_os("CODEX_HOME");
+        unsafe {
+            std::env::set_var("CODEX_HOME", path);
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for CodexHomeGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => unsafe {
+                std::env::set_var("CODEX_HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("CODEX_HOME");
+            },
+        }
+    }
+}
+
+fn write_test_catalog(home: &Path) {
+    std::fs::create_dir_all(home.join("model-catalogs")).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        "model = \"deepseek-v4-flash\"\nmodel_catalog_json = \"model-catalogs/test.json\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        home.join("model-catalogs/test.json"),
+        r#"{"models":[{"slug":"deepseek-v4-flash","context_window":1000000,"max_context_window":1000000},{"slug":"deepseek-v4-pro","context_window":131072}]}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn models_body_rewrites_catalog_configured_windows() {
+    let _lock = CODEX_HOME_TEST_LOCK.lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let _guard = CodexHomeGuard::set(temp.path());
+    write_test_catalog(temp.path());
+
+    // 上游返回 258K，catalog 配置 1M / 128K；catalog 没有的模型保持原样
+    let upstream = serde_json::json!({
+        "object": "list",
+        "data": [
+            {"id": "deepseek-v4-flash", "object": "model", "context_window": 258160},
+            {"id": "deepseek-v4-pro", "object": "model", "context_window": 258160, "max_context_window": 258160},
+            {"id": "gpt-5.6", "object": "model", "context_window": 272000}
+        ]
+    });
+    let body = serde_json::to_vec(&upstream).unwrap();
+    let rewritten =
+        codex_plus_core::protocol_proxy::apply_catalog_context_windows_to_models_body(body);
+    let parsed: serde_json::Value = serde_json::from_slice(&rewritten).unwrap();
+    let data = parsed["data"].as_array().unwrap();
+
+    // deepseek-v4-flash：覆盖为 catalog 的 1M
+    assert_eq!(data[0]["id"], "deepseek-v4-flash");
+    assert_eq!(data[0]["context_window"], 1_000_000);
+    assert_eq!(data[0]["max_context_window"], 1_000_000);
+    // deepseek-v4-pro：覆盖为 catalog 的 128K
+    assert_eq!(data[1]["context_window"], 131_072);
+    assert_eq!(data[1]["max_context_window"], 131_072);
+    // gpt-5.6：catalog 没有，保持上游原样
+    assert_eq!(data[2]["context_window"], 272_000);
+    assert!(data[2].get("max_context_window").is_none());
+}
+
+#[test]
+fn models_body_passthrough_without_catalog() {
+    let _lock = CODEX_HOME_TEST_LOCK.lock().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let _guard = CodexHomeGuard::set(temp.path());
+    // 不写任何 catalog 文件
+
+    let upstream = serde_json::json!({
+        "object": "list",
+        "data": [
+            {"id": "deepseek-v4-flash", "object": "model", "context_window": 258160}
+        ]
+    });
+    let body = serde_json::to_vec(&upstream).unwrap();
+    let rewritten =
+        codex_plus_core::protocol_proxy::apply_catalog_context_windows_to_models_body(body.clone());
+    assert_eq!(rewritten, body, "无 catalog 时应原样透传");
+}

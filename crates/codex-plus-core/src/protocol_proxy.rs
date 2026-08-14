@@ -802,6 +802,88 @@ pub async fn open_models_proxy_request(
     })
 }
 
+/// 读取当前生效的模型 catalog（config.toml 的 model_catalog_json 指针指向的文件），
+/// 返回 slug -> context_window 映射。读取/解析失败时返回空映射（不报错，保持原样透传）。
+pub fn load_catalog_context_windows() -> std::collections::HashMap<String, u64> {
+    use std::collections::HashMap;
+    let home = crate::codex_home::default_codex_home_dir();
+    let config_text = match std::fs::read_to_string(home.join("config.toml")) {
+        Ok(text) => text,
+        Err(_) => return HashMap::new(),
+    };
+    let Some(pointer) = crate::relay_config::root_key_string(&config_text, "model_catalog_json")
+    else {
+        return HashMap::new();
+    };
+    let pointer = pointer.trim().to_string();
+    if pointer.is_empty() {
+        return HashMap::new();
+    }
+    let path = if std::path::Path::new(&pointer).is_absolute() {
+        std::path::PathBuf::from(&pointer)
+    } else {
+        home.join(&pointer)
+    };
+    let Ok(catalog_text) = std::fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    let Ok(catalog) = serde_json::from_str::<serde_json::Value>(&catalog_text) else {
+        return HashMap::new();
+    };
+    let mut map = HashMap::new();
+    if let Some(models) = catalog.get("models").and_then(serde_json::Value::as_array) {
+        for model in models {
+            let Some(slug) = model.get("slug").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if let Some(window) = model.get("context_window").and_then(serde_json::Value::as_u64) {
+                map.insert(slug.to_string(), window);
+            }
+        }
+    }
+    map
+}
+
+/// 把上游 /v1/models 响应里 catalog 有配置的模型窗口改写为 catalog 值，
+/// 让 Codex 桌面版优先看到本地配置的上下文窗口（修复 #1594 的 /v1/models 覆盖问题）。
+/// 只覆盖 catalog 中存在的模型，其余保持上游原样；解析失败时原样返回。
+pub fn apply_catalog_context_windows_to_models_body(body: Vec<u8>) -> Vec<u8> {
+    let windows = load_catalog_context_windows();
+    if windows.is_empty() {
+        return body;
+    }
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return body;
+    };
+    let Some(data) = json.get_mut("data").and_then(serde_json::Value::as_array_mut) else {
+        return body;
+    };
+    let mut changed = false;
+    for entry in data {
+        let Some(id) = entry.get("id").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let Some(&window) = windows.get(id) else {
+            continue;
+        };
+        if let Some(obj) = entry.as_object_mut() {
+            let window_json = serde_json::json!(window);
+            if obj.get("context_window") != Some(&window_json) {
+                obj.insert("context_window".to_string(), window_json.clone());
+                changed = true;
+            }
+            if obj.get("max_context_window") != Some(&window_json) {
+                obj.insert("max_context_window".to_string(), window_json);
+                changed = true;
+            }
+        }
+    }
+    if !changed {
+        return body;
+    }
+    serde_json::to_vec(&json).unwrap_or(body)
+}
+
 pub async fn open_audio_transcriptions_proxy_request(
     body: &[u8],
     content_type: &str,
