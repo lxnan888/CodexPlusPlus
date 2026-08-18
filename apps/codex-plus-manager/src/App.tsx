@@ -241,6 +241,7 @@ type BackendSettings = {
   codexAppDreamSkinTheme: string;
   codexAppDreamSkinThemeConfig: DreamSkinThemeConfig;
   codexAppDreamSkinImagePath: string;
+  codexAppComposerBlurFixEnabled: boolean;
   codexGoalsEnabled: boolean;
   launchMode: LaunchMode;
   relayBaseUrl: string;
@@ -840,6 +841,7 @@ const defaultSettings: BackendSettings = {
   codexAppDreamSkinTheme: "pink",
   codexAppDreamSkinThemeConfig: defaultDreamSkinTheme(),
   codexAppDreamSkinImagePath: "",
+  codexAppComposerBlurFixEnabled: true,
   codexGoalsEnabled: false,
   launchMode: "patch",
   relayBaseUrl: "",
@@ -3664,6 +3666,7 @@ function EnhanceScreen({
               <FeatureToggle title={t("快速启动")} detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")} checked={form.codexAppFastStartup} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppFastStartup", value)} />
               <FeatureToggle title={t("原生菜单栏位置")} detail={t("把 Codex++ 菜单插入 Codex 顶部原生菜单栏。")} checked={form.codexAppNativeMenuPlacement} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppNativeMenuPlacement", value)} />
               <FeatureToggle title={t("原生菜单汉化")} detail={t("启动时通过本地主进程调试端口汉化 Codex 原生菜单；不修改安装包。需重启 Codex 才生效。")} checked={form.codexAppNativeMenuLocalization} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppNativeMenuLocalization", value)} />
+              <FeatureToggle title={t("关闭输入框毛玻璃")} detail={t("禁用 Composer 的 backdrop-filter，修复 Windows 下输入框被渲染成青色的问题；不修改安装包。需重启 Codex 才生效。")} checked={form.codexAppComposerBlurFixEnabled} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppComposerBlurFixEnabled", value)} />
             </FeatureGroup>
             <FeatureGroup title={t("远程项目")} detail={t("连接 Zed Remote 和 upstream worktree 辅助能力。")}>
               <FeatureToggle title="Zed Remote open" detail={t("远程 SSH 文件引用可直接用 Zed Remote Development 打开。")} checked={form.codexAppZedRemoteOpen} disabled={!masterEnabled} onChange={(value) => setEnhanceFlag("codexAppZedRemoteOpen", value)} />

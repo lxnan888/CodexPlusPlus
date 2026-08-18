@@ -484,6 +484,11 @@ pub struct BackendSettings {
     pub codex_app_dream_skin_theme_config: DreamSkinThemeConfig,
     #[serde(rename = "codexAppDreamSkinImagePath", default)]
     pub codex_app_dream_skin_image_path: String,
+    #[serde(
+        rename = "codexAppComposerBlurFixEnabled",
+        default = "default_composer_blur_fix_enabled"
+    )]
+    pub codex_app_composer_blur_fix_enabled: bool,
     #[serde(rename = "codexGoalsEnabled", default)]
     pub codex_goals_enabled: bool,
     #[serde(rename = "launchMode", default)]
@@ -559,6 +564,7 @@ impl Default for BackendSettings {
             codex_app_dream_skin_theme: default_dream_skin_theme(),
             codex_app_dream_skin_theme_config: DreamSkinThemeConfig::default(),
             codex_app_dream_skin_image_path: String::new(),
+            codex_app_composer_blur_fix_enabled: true,
             codex_goals_enabled: false,
             launch_mode: LaunchMode::Patch,
             relay_base_url: default_relay_base_url(),
@@ -737,6 +743,11 @@ fn clamp_image_overlay_opacity(value: u8) -> u8 {
 
 pub fn default_image_overlay_fit_mode() -> String {
     "fit".to_string()
+}
+
+pub fn default_composer_blur_fix_enabled() -> bool {
+    // 默认开启：修复 Chromium/Windows 合成环境下 Composer 毛玻璃渲染成青色的问题
+    true
 }
 
 fn normalize_image_overlay_fit_mode(value: &str) -> String {
