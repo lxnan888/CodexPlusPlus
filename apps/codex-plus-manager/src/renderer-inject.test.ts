@@ -134,3 +134,24 @@ describe("renderer injection header compatibility", () => {
     assert.doesNotMatch(renderer, /container\.style\.(?:setProperty|removeProperty)\("display"/);
   });
 });
+
+describe("composer blur fix injection", () => {
+  it("covers both ComposerLayoutRoot and ComposerLayoutBody in CSS and patch queries", async () => {
+    const script = await readFile(new URL("../../../assets/inject/composer-blur-fix.js", import.meta.url), "utf8");
+
+    // CSS 规则同时覆盖 Root 与 Body（精确类名 + 前缀兜底）
+    assert.match(script, /\._ComposerLayoutRoot_f4zzl_2\s*\{/);
+    assert.match(script, /\._ComposerLayoutBody_f4zzl_2\s*\{/);
+    assert.match(script, /\[class\*="ComposerLayoutRoot"\]/);
+    assert.match(script, /\[class\*="ComposerLayoutBody"\]/);
+    assert.match(script, /backdrop-filter:\s*none\s*!important/);
+    assert.match(script, /-webkit-backdrop-filter:\s*none\s*!important/);
+
+    // patch 与 DOM 观察者的查询同时包含 Root 与 Body 两个前缀
+    assert.ok(script.includes('[class*="ComposerLayoutRoot"], [class*="ComposerLayoutBody"]'));
+
+    // 250ms 轮询兜底保留
+    assert.match(script, /setInterval\(/);
+    assert.match(script, /250\)/);
+  });
+});

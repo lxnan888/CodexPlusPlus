@@ -1,15 +1,25 @@
 (() => {
   // Codex++：关闭 Composer 输入框毛玻璃
-  // 修复 Chromium/Windows 合成环境下 backdrop-filter 被渲染成青色的问题
+  // 修复 Chromium/Windows 合成环境下 backdrop-filter 被渲染成青色的问题。
+  // 注意：旧对话的青色来自 ComposerLayoutRoot 上的 blur(16px)，Body 只是外层容器，
+  // 两个前缀都必须覆盖（CDP 实测：仅关 Body 青色像素不变，关掉 Root 后青色归零）。
   if (!window.__CODEX_PLUS_COMPOSER_BLUR_FIX__) return;
   const STYLE_ID = "codex-plus-composer-blur-fix";
+  // Root 与 Body 统一处理：精确类名 + 前缀兜底（类名哈希随 Codex 更新可能变化）
+  const TARGET_SELECTOR = '[class*="ComposerLayoutRoot"], [class*="ComposerLayoutBody"]';
   const CSS_TEXT = [
-    // 精确类名（当前 Codex 版本）
+    "._ComposerLayoutRoot_f4zzl_2 {",
+    "  backdrop-filter: none !important;",
+    "  -webkit-backdrop-filter: none !important;",
+    "}",
     "._ComposerLayoutBody_f4zzl_2 {",
     "  backdrop-filter: none !important;",
     "  -webkit-backdrop-filter: none !important;",
     "}",
-    // 兜底：类名哈希随 Codex 更新可能变化，按前缀匹配防止失效
+    '[class*="ComposerLayoutRoot"] {',
+    "  backdrop-filter: none !important;",
+    "  -webkit-backdrop-filter: none !important;",
+    "}",
     '[class*="ComposerLayoutBody"] {',
     "  backdrop-filter: none !important;",
     "  -webkit-backdrop-filter: none !important;",
@@ -37,7 +47,7 @@
   }
 
   function patchElements() {
-    document.querySelectorAll('[class*="ComposerLayoutBody"]').forEach(patchElement);
+    document.querySelectorAll(TARGET_SELECTOR).forEach(patchElement);
   }
 
   ensureStyle();
@@ -53,8 +63,8 @@
       for (const node of mutation.addedNodes) {
         if (
           node.nodeType === 1 &&
-          (node.matches?.('[class*="ComposerLayoutBody"]') ||
-            node.querySelector?.('[class*="ComposerLayoutBody"]'))
+          (node.matches?.(TARGET_SELECTOR) ||
+            node.querySelector?.(TARGET_SELECTOR))
         ) {
           needsPatch = true;
           break;
